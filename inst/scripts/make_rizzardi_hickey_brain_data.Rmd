@@ -1,0 +1,213 @@
+---
+title: Processing the Rizzardi/Hickey brain dataset
+author: Peter Hickey
+date: 10 August 2020
+output:
+  BiocStyle::html_document:
+    titlecaps: false
+    toc_float: true
+bibliography: ../ref.bib
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r style, echo = FALSE, results = "hide", message = FALSE}
+library(BiocStyle)
+knitr::opts_chunk$set(error = FALSE, message = FALSE, warning = FALSE)
+```
+
+# Download the data
+
+We obtain a bisulfite-sequencing dataset of human brain from @rizzardi2019neuronal.
+Count matrices of methylated reads and total reads for various samples, cytosine contexts (CpG, CpA, CpT), and strands (unstranded, forward, reverse) are provided from the Gene Expression Omnibus using accession code [GSE96612](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE96612).
+The sample metadata are provided from the GitHub repository  
+[hansenlab/BrainEpigenomeNN](https://github.com/hansenlab/BrainEpigenomeNN).
+We download it using `r Biocpkg("BiocFileCache")` to cache the results:
+
+```{r}
+library(BiocFileCache)
+bfc <- BiocFileCache("raw_data", ask = FALSE)
+
+base_url <- "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE96nnn/GSE96612/suppl"
+
+cov_bulk_cpg_fname <- bfcrpath(
+  bfc,
+  file.path(base_url, "GSE96612_Cov_matrix.bulk.CpG_unstranded.txt.gz"))
+m_bulk_cpg_fname <- bfcrpath(
+  bfc,
+  file.path(base_url, "GSE96612_M_matrix.bulk.CpG_unstranded.txt.gz"))
+
+cov_sorted_cpg_fname <- bfcrpath(
+  bfc,
+  file.path(base_url, "GSE96612_Cov_matrix.sorted.CpG_unstranded.txt.gz"))
+m_sorted_cpg_fname <- bfcrpath(
+  bfc,
+  file.path(base_url, "GSE96612_M_matrix.sorted.CpG_unstranded.txt.gz"))
+
+cov_sorted_cpa_fwd_fname <- bfcrpath(
+  bfc,
+  file.path(base_url, "GSE96612_Cov_matrix.sorted.CpA_forward_strand.txt.gz"))
+m_sorted_cpa_fwd_fname <- bfcrpath(
+  bfc,
+  file.path(base_url, "GSE96612_M_matrix.sorted.CpA_forward_strand.txt.gz"))
+
+cov_sorted_cpa_rev_fname <- bfcrpath(
+  bfc,
+  file.path(base_url, "GSE96612_Cov_matrix.sorted.CpA_reverse_strand.txt.gz"))
+m_sorted_cpa_rev_fname <- bfcrpath(
+  bfc,
+  file.path(base_url, "GSE96612_M_matrix.sorted.CpA_reverse_strand.txt.gz"))
+
+cov_sorted_cpt_fwd_fname <- bfcrpath(
+  bfc,
+  file.path(base_url, "GSE96612_Cov_matrix.sorted.CpT_forward_strand.txt.gz"))
+m_sorted_cpt_fwd_fname <- bfcrpath(
+  bfc,
+  file.path(base_url, "GSE96612_M_matrix.sorted.CpT_forward_strand.txt.gz"))
+
+cov_sorted_cpt_rev_fname <- bfcrpath(
+  bfc,
+  file.path(base_url, "GSE96612_Cov_matrix.sorted.CpT_reverse_strand.txt.gz"))
+m_sorted_cpt_rev_fname <- bfcrpath(
+  bfc,
+  file.path(base_url, "GSE96612_M_matrix.sorted.CpT_reverse_strand.txt.gz"))
+```
+
+# Processing the data
+
+We create a function to extract the loci, sample-leve metadata, and count 
+matrices from each file.
+
+```{r}
+library(data.table)
+library(GenomicRanges)
+library(HDF5Array)
+options(DelayedArray.block.size = 1e10) # 10GB block size.
+path <- file.path("MethylSeqData", "rizzardi_hickey_brain")
+dir.create(path, showWarnings = FALSE, recursive = TRUE)
+FUN <- function(cov_fname, m_fname, prefix) {
+  cov_dt <- fread(cov_fname)
+  m_dt <- fread(m_fname)
+  stopifnot(
+    identical(colnames(cov_dt), colnames(m_dt)),
+    identical(cov_dt$chr, m_dt$chr),
+    identical(cov_dt$start, m_dt$start),
+    identical(cov_dt$strand, m_dt$strand))
+  
+  rr <- GPos(
+    seqnames = cov_dt$chr, 
+    pos = cov_dt$start, 
+    strand = cov_dt$strand, 
+    seqinfo = Seqinfo(genome = "hg19"))
+  stopifnot(!is.unsorted(rr))
+  
+  cns <- setdiff(colnames(cov_dt), c("chr", "start", "strand"))
+  cns <- sub("NA$", "NAcc", cns)
+  cn_split <- strsplit(cns, "_")
+  donor <- vapply(cn_split, "[[", 1, FUN.VALUE = character(1L))
+  tissue <- vapply(cn_split, "[[", 2, FUN.VALUE = character(1L))
+  neun <- if (all(lengths(cn_split)) == 3) {
+    vapply(cn_split, "[[", 2, FUN.VALUE = character(1L))
+  } else {
+    "unsorted"
+  }
+  cd <- DataFrame(donor = donor, tissue = tissue, neun = neun, row.names = cns)
+  
+  m <- DelayedArray(m_dt[, !c("chr", "start", "strand")])
+  rownames(m) <- NULL
+  colnames(m) <- sub("NA$", "NAcc", colnames(m))
+  m <- writeHDF5Array(
+    x = m,
+    filepath = file.path(path, paste0(prefix, HDF5Array:::.ASSAYS_H5_BASENAME)),
+    name = "M",
+    # TODO: Think about best chunkdim. Default is getHDF5DumpChunkDim(dim(x)),
+    #       which currently results in blocks along columns.
+    chunkdim = makeCappedVolumeBox(
+      getHDF5DumpChunkLength(),
+      dim(m),
+      "hypercube"),
+    level = 9,
+    with.dimnames = TRUE)
+  
+  cov <- DelayedArray(cov_dt[, !c("chr", "start", "strand")])
+  rownames(cov) <- NULL
+  colnames(cov) <- sub("NA$", "NAcc", colnames(cov))
+  cov <- writeHDF5Array(
+    x = cov,
+    filepath = file.path(path, paste0(prefix, HDF5Array:::.ASSAYS_H5_BASENAME)),
+    name = "Cov",
+    # TODO: Think about best chunkdim. Default is getHDF5DumpChunkDim(dim(x)),
+    #       which currently results in blocks along columns.
+    chunkdim = makeCappedVolumeBox(
+      getHDF5DumpChunkLength(),
+      dim(cov),
+      "hypercube"),
+    level = 9,
+    with.dimnames = TRUE)
+  list(M = m, Cov = cov, rowRanges = rr, colData = cd)
+}
+```
+
+We run this on all the datasets.
+
+```{r}
+bulk_cpg <- FUN(cov_bulk_cpg_fname, m_bulk_cpg_fname, "bulk_CpG.")
+sorted_cpg <- FUN(cov_sorted_cpg_fname, m_sorted_cpg_fname, "sorted_CpG.")
+sorted_cpa_fwd <- FUN(
+  cov_sorted_cpa_fwd_fname, 
+  m_sorted_cpa_fwd_fname,
+  "sorted_CpA_fwd.")
+sorted_cpa_rev <- FUN(
+  cov_sorted_cpa_rev_fname, 
+  m_sorted_cpa_rev_fname,
+  "sorted_CpA_rev.")
+sorted_cpt_fwd <- FUN(
+  cov_sorted_cpt_fwd_fname, 
+  m_sorted_cpt_fwd_fname,
+  "sorted_CpT_fwd.")
+sorted_cpt_rev <- FUN(
+  cov_sorted_cpt_rev_fname, 
+  m_sorted_cpt_rev_fname,
+  "sorted_CpT_rev.")
+```
+
+# Save for upload
+
+We save all of the relevant components to file for upload to `r Biocpkg("ExperimentHub")`.
+Note that the count matrices have already been saved in [Processing the data].
+
+```{r}
+saveRDS(bulk_cpg$colData, file.path(path, "bulk_CpG.colData.rds"))
+saveRDS(bulk_cpg$rowRanges, file.path(path, "bulk_CpG.rowRanges.rds"))
+
+saveRDS(sorted_cpg$colData, file.path(path, "sorted_CpG.colData.rds"))
+saveRDS(sorted_cpg$rowRanges, file.path(path, "sorted_CpG.rowRanges.rds"))
+
+saveRDS(sorted_cpa_fwd$colData, file.path(path, "sorted_CpA_fwd.colData.rds"))
+saveRDS(
+  sorted_cpa_fwd$rowRanges, 
+  file.path(path, "sorted_CpA_fwd.rowRanges.rds"))
+
+saveRDS(sorted_cpa_rev$colData, file.path(path, "sorted_CpA_rev.colData.rds"))
+saveRDS(
+  sorted_cpa_rev$rowRanges,
+  file.path(path, "sorted_CpA_rev.rowRanges.rds"))
+
+saveRDS(sorted_cpt_fwd$colData, file.path(path, "sorted_CpT_fwd.colData.rds"))
+saveRDS(
+  sorted_cpt_fwd$rowRanges, 
+  file.path(path, "sorted_CpT_fwd.rowRanges.rds"))
+
+saveRDS(sorted_cpt_rev$colData, file.path(path, "sorted_CpT_rev.colData.rds"))
+saveRDS(
+  sorted_cpt_rev$rowRanges,
+  file.path(path, "sorted_CpT_rev.rowRanges.rds"))
+```
+
+# Session info
+
+```{r}
+sessionInfo()
+```
+
+# References
