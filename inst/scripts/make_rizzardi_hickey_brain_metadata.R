@@ -1,6 +1,6 @@
 # TODO
 write.csv(
-  file = "../../extdata/metadata-rizzardi-hickey-brain.csv",
+  file = "../../extdata/metadata_rizzardi_hickey_brain.csv",
   data.frame(
     # Title = sprintf("Wu %s mouse kidney %s",
     #                 rep(c("healthy", "diseased"), each=2),
@@ -9,7 +9,7 @@ write.csv(
     #                       rep(c("Count matrix", "Per-cell metadata"), 2),
     #                       rep(c("healthy tissue", "fibrotic tissue"), each=2)),
     RDataPath = file.path(
-      "MethylSeqData", "rizzardi-hickey-brain",
+      "MethylSeqData", "rizzardi_hickey_brain",
       # paste0(c("counts-healthy", "coldata-healthy", "counts-disease", "coldata-disease"),
       # ".rds"))
     ),

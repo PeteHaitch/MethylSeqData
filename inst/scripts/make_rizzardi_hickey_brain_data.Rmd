@@ -1,7 +1,7 @@
 ---
 title: Processing the Rizzardi/Hickey brain dataset
 author: Peter Hickey
-date: 10 August 2020
+date: 17 August 2020
 output:
   BiocStyle::html_document:
     titlecaps: false
@@ -18,11 +18,9 @@ knitr::opts_chunk$set(error = FALSE, message = FALSE, warning = FALSE)
 
 # Download the data
 
-We obtain a bisulfite-sequencing dataset of human brain from @rizzardi2019neuronal.
+We obtain a whole-genome bisulfite-sequencing dataset of human brain from @rizzardi2019neuronal.
 Count matrices of methylated reads and total reads for various samples, cytosine contexts (CpG, CpA, CpT), and strands (unstranded, forward, reverse) are provided from the Gene Expression Omnibus using accession code [GSE96612](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE96612).
-The sample metadata are provided from the GitHub repository  
-[hansenlab/BrainEpigenomeNN](https://github.com/hansenlab/BrainEpigenomeNN).
-We download it using `r Biocpkg("BiocFileCache")` to cache the results:
+We download these using `r Biocpkg("BiocFileCache")` to cache the results:
 
 ```{r}
 library(BiocFileCache)
@@ -73,10 +71,9 @@ m_sorted_cpt_rev_fname <- bfcrpath(
   file.path(base_url, "GSE96612_M_matrix.sorted.CpT_reverse_strand.txt.gz"))
 ```
 
-# Processing the data
+# Process the data
 
-We create a function to extract the loci, sample-leve metadata, and count 
-matrices from each file.
+We create a function to extract the loci, sample-level metadata, and count matrices from each file.
 
 ```{r}
 library(data.table)
@@ -113,12 +110,14 @@ FUN <- function(cov_fname, m_fname, prefix) {
   }
   cd <- DataFrame(donor = donor, tissue = tissue, neun = neun, row.names = cns)
   
+  # TODO: Decide on whether M and Cov go in the same .h5 file.
   m <- DelayedArray(m_dt[, !c("chr", "start", "strand")])
   rownames(m) <- NULL
   colnames(m) <- sub("NA$", "NAcc", colnames(m))
   m <- writeHDF5Array(
     x = m,
-    filepath = file.path(path, paste0(prefix, HDF5Array:::.ASSAYS_H5_BASENAME)),
+    # filepath = file.path(path, paste0(prefix, HDF5Array:::.ASSAYS_H5_BASENAME)),
+    filepath = file.path(path, paste0(prefix, "M.h5")),
     name = "M",
     # TODO: Think about best chunkdim. Default is getHDF5DumpChunkDim(dim(x)),
     #       which currently results in blocks along columns.
@@ -134,7 +133,8 @@ FUN <- function(cov_fname, m_fname, prefix) {
   colnames(cov) <- sub("NA$", "NAcc", colnames(cov))
   cov <- writeHDF5Array(
     x = cov,
-    filepath = file.path(path, paste0(prefix, HDF5Array:::.ASSAYS_H5_BASENAME)),
+    # filepath = file.path(path, paste0(prefix, HDF5Array:::.ASSAYS_H5_BASENAME)),
+    filepath = file.path(path, paste0(prefix, "Cov.h5")),
     name = "Cov",
     # TODO: Think about best chunkdim. Default is getHDF5DumpChunkDim(dim(x)),
     #       which currently results in blocks along columns.
@@ -177,31 +177,23 @@ We save all of the relevant components to file for upload to `r Biocpkg("Experim
 Note that the count matrices have already been saved in [Processing the data].
 
 ```{r}
+# TODO: Decide on CSV vs. Rds
+#       - "CSV files do not record an encoding" (`?write.csv`)
+#       - rds file can contain more complicated sample metadata.
+write.csv(bulk_cpg$colData, file.path(path, "bulk_CpG.colData.csv.gz"))
 saveRDS(bulk_cpg$colData, file.path(path, "bulk_CpG.colData.rds"))
+
+# TODO: Decide on BED vs. RDS
+#       - BED files don't contain genome / seqinfo
+#       - .rds file can contain GPos directly
+#       - ds file can 
 saveRDS(bulk_cpg$rowRanges, file.path(path, "bulk_CpG.rowRanges.rds"))
+library(rtracklayer)
+export(
+  con = file.path(path, "bulk_CpG.rowRanges.bed.gz"),
+  object = bulk_cpg$rowRanges)
 
-saveRDS(sorted_cpg$colData, file.path(path, "sorted_CpG.colData.rds"))
-saveRDS(sorted_cpg$rowRanges, file.path(path, "sorted_CpG.rowRanges.rds"))
-
-saveRDS(sorted_cpa_fwd$colData, file.path(path, "sorted_CpA_fwd.colData.rds"))
-saveRDS(
-  sorted_cpa_fwd$rowRanges, 
-  file.path(path, "sorted_CpA_fwd.rowRanges.rds"))
-
-saveRDS(sorted_cpa_rev$colData, file.path(path, "sorted_CpA_rev.colData.rds"))
-saveRDS(
-  sorted_cpa_rev$rowRanges,
-  file.path(path, "sorted_CpA_rev.rowRanges.rds"))
-
-saveRDS(sorted_cpt_fwd$colData, file.path(path, "sorted_CpT_fwd.colData.rds"))
-saveRDS(
-  sorted_cpt_fwd$rowRanges, 
-  file.path(path, "sorted_CpT_fwd.rowRanges.rds"))
-
-saveRDS(sorted_cpt_rev$colData, file.path(path, "sorted_CpT_rev.colData.rds"))
-saveRDS(
-  sorted_cpt_rev$rowRanges,
-  file.path(path, "sorted_CpT_rev.rowRanges.rds"))
+# TODO Process the remaining objects.
 ```
 
 # Session info
