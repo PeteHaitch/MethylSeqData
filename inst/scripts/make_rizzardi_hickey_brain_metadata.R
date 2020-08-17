@@ -29,5 +29,6 @@ write.csv(
     DataProvider = "GEO",
     Maintainer = "Peter Hickey <peter.hickey@gmail.com>",
     # RDataClass = c("dgCMatrix", "data.frame", "dgCMatrix", "data.frame"),
-    DispatchClass = "Rds"),
+    # DispatchClass = "Rds"
+  ),
   row.names = FALSE)
