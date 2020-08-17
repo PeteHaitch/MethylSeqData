@@ -1,0 +1,145 @@
+---
+title: Processing the Chen mammary dataset
+author: Peter Hickey
+date: 17 August 2020
+output:
+  BiocStyle::html_document:
+    titlecaps: false
+    toc_float: true
+bibliography: ../ref.bib
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r style, echo = FALSE, results = "hide", message = FALSE}
+library(BiocStyle)
+knitr::opts_chunk$set(error = FALSE, message = FALSE, warning = FALSE)
+```
+
+# Download the data
+
+We obtain a reduced representation bisulfite-sequencing dataset of mouse mammary gland used in @chen2017mammary.
+Bismark output files for each sample and a sample metadata file are provided from Zenodo using DOI [10.5281/zenodo.1052871](https://doi.org/10.5281/zenodo.1052871).
+We download these using `r Biocpkg("BiocFileCache")` to cache the results:
+
+```{r}
+library(BiocFileCache)
+bfc <- BiocFileCache("raw_data", ask = FALSE)
+
+base_url <- "https://zenodo.org/record/1052871/files"
+
+p6_1_fname <- bfcrpath(
+  bfc,
+  file.path(base_url, "P6_1.bismark.cov.gz"))
+
+p6_4_fname <- bfcrpath(
+  bfc,
+  file.path(base_url, "P6_4.bismark.cov.gz"))
+
+p7_2_fname <- bfcrpath(
+  bfc,
+  file.path(base_url, "P7_2.bismark.cov.gz"))
+
+p7_5_fname <- bfcrpath(
+  bfc,
+  file.path(base_url, "P7_5.bismark.cov.gz"))
+
+p8_3_fname <- bfcrpath(
+  bfc,
+  file.path(base_url, "P8_3.bismark.cov.gz"))
+
+p8_6_fname <- bfcrpath(
+  bfc,
+  file.path(base_url, "P8_6.bismark.cov.gz"))
+
+targets_fname <- bfcrpath(
+  bfc,
+  file.path(base_url, "targets.txt"))
+```
+
+# Process the data
+
+We create a function to extract the loci and count matrices from each file.
+
+```{r}
+library(GenomicRanges)
+path <- file.path("MethylSeqData", "chen_mammary")
+dir.create(path, showWarnings = FALSE, recursive = TRUE)
+FUN <- function(fname, prefix) {
+  bismark_df <- read.delim(fname, sep = "\t", header = FALSE)
+  
+  rr <- GPos(
+    seqnames = bismark_df$V1, 
+    pos = bismark_df$V2, 
+    seqinfo = Seqinfo(genome = "mm10"))
+  
+  m <- matrix(bismark_df$V5, dimnames = list(NULL, prefix))
+  u <- matrix(bismark_df$V6, dimnames = list(NULL, prefix))
+
+  list(M = m, U = u, rowRanges = rr)
+}
+```
+
+We run this on all the datasets.
+
+```{r}
+p6_1 <- FUN(p6_1_fname, "P6_1")
+p6_4 <- FUN(p6_4_fname, "P6_4")
+p7_2 <- FUN(p7_2_fname, "P7_2")
+p7_5 <- FUN(p7_5_fname, "P7_5")
+p8_3 <- FUN(p8_3_fname, "P8_3")
+p8_6 <- FUN(p8_6_fname, "P8_6")
+```
+
+We load in the sample metadata.
+
+```{r}
+targets <- read.delim(targets_fname, sep = "\t")
+```
+
+We then combine the sample-level data together.
+
+```{r}
+sample_data <- list(
+  "P6_1" = p6_1, "P6_4" = p6_4, 
+  "P7_2" = p7_2, "P7_5" = p7_5, 
+  "P8_3" = p8_3, "P8_6" = p8_6)
+
+rr <- sort(unique(Reduce(c, lapply(sample_data, "[[", "rowRanges"))))
+
+M <- matrix(
+  0L, 
+  nrow = length(rr), 
+  ncol = length(sample_data),
+  dimnames = list(NULL, names(sample_data)))
+U <- M
+for (j in seq_along(sample_data)) {
+  sd <- sample_data[[j]]
+  ol <- findOverlaps(sd$rowRanges, rr, type = "equal")
+  M[subjectHits(ol), colnames(sd$M)] <- sd$M[queryHits(ol), ]
+  U[subjectHits(ol), colnames(sd$U)] <- sd$U[queryHits(ol), ]
+}
+```
+
+# Save for upload
+
+We save all of the relevant components to file for upload to `r Biocpkg("ExperimentHub")`.
+
+```{r}
+path <- file.path("MethylSeqData", "chen_mammary")
+dir.create(path, showWarnings = FALSE, recursive = TRUE)
+
+saveRDS(M, file.path(path, "chen_mammary.M.rds"), compress = "xz")
+saveRDS(U, file.path(path, "chen_mammary.U.rds"), compress = "xz")
+
+# TODO: Awaiting decision on storing colData and rowData as R objects vs. 
+#       simple files.
+```
+
+# Session information
+
+```{r}
+sessionInfo()
+```
+
+# References
