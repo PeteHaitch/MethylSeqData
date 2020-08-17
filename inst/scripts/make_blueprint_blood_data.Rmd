@@ -1,0 +1,265 @@
+---
+title: Processing the BLUEPRINT blood dataset
+author: Peter Hickey
+date: 17 August 2020
+output:
+  BiocStyle::html_document:
+    titlecaps: false
+    toc_float: true
+bibliography: ../ref.bib
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r style, echo = FALSE, results = "hide", message = FALSE}
+library(BiocStyle)
+knitr::opts_chunk$set(error = FALSE, message = FALSE, warning = FALSE)
+```
+
+# Query DeepBlue
+
+**TODO** Write overview
+
+```{r}
+library(S4Vectors)
+library(DeepBlueR)
+
+# TODO: Ask Stephanie for details on how these were selected.
+blueprint_blood_biosource <- c(
+  "CD14-positive, CD16-negative classical monocyte", 
+  "CD8-positive, alpha-beta T cell",
+  "CD4-positive, alpha-beta T cell", 
+  "CD38-negative naive B cell", 
+  "cytotoxic CD56-dim natural killer cell", 
+  "mature neutrophil",
+  "mature eosinophil")
+
+blueprint_blood_DNA_meth <- deepblue_list_experiments(
+  genome = "GRCh38",
+  epigenetic_mark = "DNA Methylation",
+  technique = "BisulfiteSeq",
+  biosource = blueprint_blood_biosource,
+  project = "BLUEPRINT Epigenome")
+
+# Only want the WIG files
+blueprint_blood_DNA_meth <- blueprint_blood_DNA_meth[
+  grep("\\.wig$", blueprint_blood_DNA_meth[["name"]]), ]
+
+# deepblue_info() returns a nested list for these queries.
+blueprint_blood_DNA_meth_info <- deepblue_info(blueprint_blood_DNA_meth[["id"]])
+
+# Convert the nested list into a DataFrame.
+# This DataFrame contains some 'list-columns'.
+df <- do.call(
+  rbind,
+  lapply(
+    blueprint_blood_DNA_meth_info,
+    function(info) {
+      # Don't care about 'columns' column.
+      info <- info[setdiff(names(info), "columns")]
+      # Deal with 'flat' columns.
+      df <- DataFrame(info[lengths(info) == 1], check.names = FALSE)
+      # Deal with 'nested' columns.
+      tmp <- lapply(info[lengths(info) > 1], DataFrame)
+      for (n in names(tmp)) {
+        df[[n]] <- tmp[[n]]
+      }
+      df
+    }))
+```
+
+We need to do some post-processing of the result.
+Firstly, we opt to only retain columns that are likely to be of interest in downstream analyses.
+
+```{r}
+# Manually select some columns that look vaguely interesting.
+EXTRA.METADATA.KEEP.COLUMNS <- c(
+  "BIOMATERIAL_PROVIDER", "CELL_TYPE", "DISEASE", "DISEASE_ONTOLOGY_URI",
+  "DONOR_AGE", "DONOR_ETHNICITY", "DONOR_HEALTH_STATUS", "DONOR_ID",
+  "DONOR_REGION_OF_RESIDENCE", "DONOR_SEX", "EXPERIMENT_ALIAS",
+  "EXPERIMENT_ID", "FIRST_SUBMISSION_DATE", "LIBRARY_NAME", 
+  "SAMPLE_BARCODE", "SAMPLE_DESCRIPTION", "SAMPLE_ID", "SAMPLE_NAME", 
+  "SAMPLE_ONTOLOGY_URI", "SAMPLE_SOURCE", "SEQ_RUNS_COUNT",
+  "SPECIMEN_PROCESSING", "SPECIMEN_STORAGE", "STUDY_ID", "STUDY_NAME",
+  "TISSUE_TYPE", "TREATMENT", "TWIN_PAIR_ID")
+SAMPLE.INFO.KEEP.COLUMNS <- c(
+  "BIOMATERIAL_PROVIDER", "CELL_TYPE", "DISEASE", "DONOR_AGE", 
+  "DONOR_ETHNICITY", "DONOR_HEALTH_STATUS", "DONOR_ID",
+  "DONOR_REGION_OF_RESIDENCE", "DONOR_SEX", "SAMPLE_ID", "SAMPLE_NAME", 
+  "SPECIMEN_PROCESSING", "SPECIMEN_STORAGE", "TISSUE_TYPE", "biosource_name")
+
+# Construct colData.
+coldata <- cbind(
+  df[, "sample_id", drop = FALSE],
+  df[, "extra_metadata"][, EXTRA.METADATA.KEEP.COLUMNS],
+  df[, "sample_info"][, SAMPLE.INFO.KEEP.COLUMNS])
+rownames(coldata) <- coldata$sample_id
+```
+
+Secondly, each sample is represented by two files, one corresponding to the total coverage (`bs_cov` in the filename) and one corresponding to the methylation call (`bc_call` in the filename), which is the proportion of the total reads that were methylated.
+We therefore collapse the sample-level metadata so that each row represents a sample.
+
+```{r}
+# Remove duplicate rows
+coldata <- unique(coldata)
+stopifnot(nrow(coldata) == 44)
+
+# Add bs_cov and bs_call filenames.
+coldata[["bs_cov"]] <- file.path(
+  "ftp://ftp.ebi.ac.uk/pub/databases",
+  grep(
+    "bs_cov",
+    df[["extra_metadata"]][["FILE"]],
+    value = TRUE))
+coldata[["bs_call"]] <- file.path(
+  "ftp://ftp.ebi.ac.uk/pub/databases",
+  grep(
+    "bs_call",
+    df[["extra_metadata"]][["FILE"]],
+    value = TRUE))
+# Check files match up.
+stopifnot(
+  identical(
+    vapply(
+      strsplit(basename(coldata[["bs_cov"]]), "\\."), 
+      "[[", 
+      character(1), 
+      1),
+        vapply(
+      strsplit(basename(coldata[["bs_call"]]), "\\."), 
+      "[[", 
+      character(1), 
+      1)))
+```
+
+# Download and process the data
+
+Although we could read the data directly from the server, we opt to download these files using `r Biocpkg("BiocFileCache")` to cache the results in order to mitigate connectivity issues.
+
+```{r}
+library(BiocFileCache)
+bfc <- BiocFileCache("raw_data", ask = FALSE)
+
+fname_df <- do.call(
+  rbind,
+  lapply(rownames(coldata), function(sample) {
+    message(sample)
+    cd <- coldata[sample, ]
+    cov_fname <- bfcrpath(
+      bfc,
+      cd[["bs_cov"]])
+    call_fname <- bfcrpath(
+      bfc,
+      cd[["bs_call"]])
+    data.frame(bs_cov = cov_fname, bs_call = call_fname, row.names = sample)
+  }))
+```
+
+We create a function to extract the loci and count matrices for each sample.
+
+```{r}
+library(rtracklayer)
+
+FUN <- function(sample) {
+  # TODO: Remove this line
+  message(sample)
+  
+  my_import <- function(fname) {
+    gr <- import(fname)
+    # Add Seqinfo and sort.
+    # NOTE: DeepBlue reports genome is GRCh38 (i.e. NCBI) but it is really hg38 
+    #       (i.e. UCSC). This can be seen because the seqnames are of the form 
+    #       'chr1' rather than '1'.
+    seqinfo(gr) <- Seqinfo(genome = "hg38")[seqlevels(gr)]
+    gr <- sortSeqlevels(gr)
+    sort(gr)
+  }
+  cov_bw <- my_import(fname_df[sample, "bs_cov"])
+  call_bw <- my_import(fname_df[sample, "bs_call"])
+  stopifnot(identical(granges(cov_bw), granges(call_bw)))
+  
+  rr <- GPos(
+    seqnames = seqnames(cov_bw),
+    pos = start(cov_bw),
+    seqinfo = seqinfo(cov_bw))
+  
+  cov <- matrix(as.integer(score(cov_bw)), dimnames = list(NULL, sample))
+  m <- matrix(
+    as.integer(round(score(call_bw) * score(cov_bw))),
+    dimnames = list(NULL, sample))
+
+  list(M = m, Cov = cov, rowRanges = rr)
+}
+```
+
+We run this on all the samples.
+
+```{r}
+sample_data <- lapply(rownames(coldata), FUN)
+```
+
+We then combine the sample-level data together.
+
+```{r}
+rr <- sort(unique(Reduce(c, lapply(sample_data, "[[", "rowRanges"))))
+
+M <- matrix(
+  0L, 
+  nrow = length(rr), 
+  ncol = length(sample_data),
+  dimnames = list(NULL, rownames(coldata)))
+Cov <- M
+for (j in seq_along(sample_data)) {
+  sd <- sample_data[[j]]
+  ol <- findOverlaps(sd$rowRanges, rr, type = "equal")
+  M[subjectHits(ol), colnames(sd$M)] <- sd$M[queryHits(ol), ]
+  Cov[subjectHits(ol), colnames(sd$Cov)] <- sd$Cov[queryHits(ol), ]
+}
+```
+
+# Save for upload
+
+We save all of the relevant components to file for upload to `r Biocpkg("ExperimentHub")`.
+
+```{r}
+library(HDF5Array)
+
+path <- file.path("MethylSeqData", "blueprint_blood")
+dir.create(path, showWarnings = FALSE, recursive = TRUE)
+
+M <- writeHDF5Array(
+    x = M,
+    filepath = file.path(path, "blueprint_blood.M.h5"),
+    name = "M",
+    # TODO: Think about best chunkdim. Default is getHDF5DumpChunkDim(dim(x)),
+    #       which currently results in blocks along columns.
+    chunkdim = makeCappedVolumeBox(
+      getHDF5DumpChunkLength(),
+      dim(M),
+      "hypercube"),
+    level = 9,
+    with.dimnames = TRUE)
+Cov <- writeHDF5Array(
+    x = Cov,
+    filepath = file.path(path, "blueprint_blood.M.h5"),
+    name = "Cov",
+    # TODO: Think about best chunkdim. Default is getHDF5DumpChunkDim(dim(x)),
+    #       which currently results in blocks along columns.
+    chunkdim = makeCappedVolumeBox(
+      getHDF5DumpChunkLength(),
+      dim(Cov),
+      "hypercube"),
+    level = 9,
+    with.dimnames = TRUE)
+
+# TODO: Awaiting decision on storing colData and rowData as R objects vs. 
+#       simple files.
+```
+
+# Session information
+
+```{r}
+sessionInfo()
+```
+
+# References
