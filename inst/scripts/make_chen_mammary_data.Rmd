@@ -73,6 +73,7 @@ FUN <- function(fname, prefix) {
     pos = bismark_df$V2, 
     seqinfo = Seqinfo(genome = "mm10"))
   
+  # TODO: Ensure m and cov are an integers.
   m <- matrix(bismark_df$V5, dimnames = list(NULL, prefix))
   u <- matrix(bismark_df$V6, dimnames = list(NULL, prefix))
 

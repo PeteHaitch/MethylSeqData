@@ -114,6 +114,7 @@ FUN <- function(cov_fname, m_fname, prefix) {
   m <- DelayedArray(m_dt[, !c("chr", "start", "strand")])
   rownames(m) <- NULL
   colnames(m) <- sub("NA$", "NAcc", colnames(m))
+  # TODO: Ensure m is an integer.
   m <- writeHDF5Array(
     x = m,
     # filepath = file.path(path, paste0(prefix, HDF5Array:::.ASSAYS_H5_BASENAME)),
@@ -131,6 +132,7 @@ FUN <- function(cov_fname, m_fname, prefix) {
   cov <- DelayedArray(cov_dt[, !c("chr", "start", "strand")])
   rownames(cov) <- NULL
   colnames(cov) <- sub("NA$", "NAcc", colnames(cov))
+  # TODO: Ensure cov is an integer.
   cov <- writeHDF5Array(
     x = cov,
     # filepath = file.path(path, paste0(prefix, HDF5Array:::.ASSAYS_H5_BASENAME)),
