@@ -68,16 +68,15 @@ dir.create(path, showWarnings = FALSE, recursive = TRUE)
 FUN <- function(fname, prefix) {
   bismark_df <- read.delim(fname, sep = "\t", header = FALSE)
   
-  rr <- GPos(
+  rowranges <- GPos(
     seqnames = bismark_df$V1, 
     pos = bismark_df$V2, 
     seqinfo = Seqinfo(genome = "mm10"))
   
-  # TODO: Ensure m and cov are an integers.
-  m <- matrix(bismark_df$V5, dimnames = list(NULL, prefix))
-  u <- matrix(bismark_df$V6, dimnames = list(NULL, prefix))
+  M <- matrix(as.integer(bismark_df$V5), dimnames = list(NULL, prefix))
+  U <- matrix(as.integer(bismark_df$V6), dimnames = list(NULL, prefix))
 
-  list(M = m, U = u, rowRanges = rr)
+  list(M = M, U = U, rowRanges = rowranges)
 }
 ```
 
@@ -92,13 +91,7 @@ p8_3 <- FUN(p8_3_fname, "P8_3")
 p8_6 <- FUN(p8_6_fname, "P8_6")
 ```
 
-We load in the sample metadata.
-
-```{r}
-targets <- read.delim(targets_fname, sep = "\t")
-```
-
-We then combine the sample-level data together.
+We then combine the sample-level loci and count matrices.
 
 ```{r}
 sample_data <- list(
@@ -106,35 +99,90 @@ sample_data <- list(
   "P7_2" = p7_2, "P7_5" = p7_5, 
   "P8_3" = p8_3, "P8_6" = p8_6)
 
-rr <- sort(unique(Reduce(c, lapply(sample_data, "[[", "rowRanges"))))
+rowranges <- sort(unique(Reduce(c, lapply(sample_data, "[[", "rowRanges"))))
 
 M <- matrix(
   0L, 
-  nrow = length(rr), 
+  nrow = length(rowranges), 
   ncol = length(sample_data),
   dimnames = list(NULL, names(sample_data)))
 U <- M
 for (j in seq_along(sample_data)) {
   sd <- sample_data[[j]]
-  ol <- findOverlaps(sd$rowRanges, rr, type = "equal")
+  ol <- findOverlaps(sd$rowRanges, rowranges, type = "equal")
   M[subjectHits(ol), colnames(sd$M)] <- sd$M[queryHits(ol), ]
   U[subjectHits(ol), colnames(sd$U)] <- sd$U[queryHits(ol), ]
 }
 ```
 
-# Save for upload
-
-We save all of the relevant components to file for upload to `r Biocpkg("ExperimentHub")`.
+Finally, we load in the sample metadata.
 
 ```{r}
+coldata <- read.delim(targets_fname, sep = "\t")
+```
+
+# Save for upload
+
+We write all of the relevant components to to a [HDF5 file](https://en.wikipedia.org/wiki/Hierarchical_Data_Format) for upload to `r Biocpkg("ExperimentHub")`.
+
+```{r}
+library(HDF5Array)
+options(DelayedArray.block.size = 1e10) # 10GB block size.
 path <- file.path("MethylSeqData", "chen_mammary")
 dir.create(path, showWarnings = FALSE, recursive = TRUE)
+fname <- file.path(path, "chen_mammary.h5")
+level <- 9
 
-saveRDS(M, file.path(path, "chen_mammary.M.rds"), compress = "xz")
-saveRDS(U, file.path(path, "chen_mammary.U.rds"), compress = "xz")
+# M and U.
+# TODO: Think about best chunkdim. Default is getHDF5DumpChunkDim(dim(x)),
+#       which currently results in blocks along columns.
+chunkdim <- makeCappedVolumeBox(
+    getHDF5DumpChunkLength(),
+    dim(M),
+    "hypercube")
+M <- writeHDF5Array(
+  x = M, 
+  filepath = fname,
+  name = "M",
+  chunkdim = chunkdim,
+  level = level,
+  with.dimnames = TRUE)
+U <- writeHDF5Array(
+  x = U, 
+  filepath = fname,
+  name = "U",
+  chunkdim = chunkdim,
+  level = level,
+  with.dimnames = TRUE)
 
-# TODO: Awaiting decision on storing colData and rowData as R objects vs. 
-#       simple files.
+# rowRanges
+h5write(
+  # TODO: https://github.com/Bioconductor/GenomicRanges/issues/46
+  obj = as.data.frame(rowranges), 
+  file = fname, 
+  name = "rowRanges",
+  level = level,
+  # NOTE: Needed to ensure factor columns aren't converted to their underlying 
+  #       integer types.
+  DataFrameAsCompound = FALSE)
+h5write(
+  obj = as.data.frame(seqinfo(rowranges)), 
+  file = fname, 
+  name = "rowRanges/seqinfo",
+  level = level,
+  # NOTE: Needed to ensure factor columns aren't converted to their underlying 
+  #       integer types.
+  DataFrameAsCompound = FALSE)
+
+# colData
+h5write(
+  obj = coldata, 
+  file = fname, 
+  name = "colData",
+  level = level,
+  # NOTE: Needed to ensure factor columns aren't converted to their underlying 
+  #       integer types.
+  DataFrameAsCompound = FALSE)
 ```
 
 # Session information

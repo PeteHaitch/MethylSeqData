@@ -71,18 +71,17 @@ m_sorted_cpt_rev_fname <- bfcrpath(
   file.path(base_url, "GSE96612_M_matrix.sorted.CpT_reverse_strand.txt.gz"))
 ```
 
-# Process the data
+# Process the data and save for upload
 
-We create a function to extract the loci, sample-level metadata, and count matrices from each file.
+We create a function to extract the loci, sample-level metadata, and count matrices from each file and write all of the relevant components to to a [HDF5 file](https://en.wikipedia.org/wiki/Hierarchical_Data_Format) for upload to `r Biocpkg("ExperimentHub")`.
 
 ```{r}
 library(data.table)
 library(GenomicRanges)
 library(HDF5Array)
-options(DelayedArray.block.size = 1e10) # 10GB block size.
-path <- file.path("MethylSeqData", "rizzardi_hickey_brain")
-dir.create(path, showWarnings = FALSE, recursive = TRUE)
-FUN <- function(cov_fname, m_fname, prefix) {
+
+FUN <- function(cov_fname, m_fname, out_fname) {
+  # Load data
   cov_dt <- fread(cov_fname)
   m_dt <- fread(m_fname)
   stopifnot(
@@ -91,13 +90,32 @@ FUN <- function(cov_fname, m_fname, prefix) {
     identical(cov_dt$start, m_dt$start),
     identical(cov_dt$strand, m_dt$strand))
   
-  rr <- GPos(
+  # rowRanges
+  rowranges <- GPos(
     seqnames = cov_dt$chr, 
     pos = cov_dt$start, 
     strand = cov_dt$strand, 
     seqinfo = Seqinfo(genome = "hg19"))
-  stopifnot(!is.unsorted(rr))
+  stopifnot(!is.unsorted(rowranges))
+  h5write(
+    # TODO: https://github.com/Bioconductor/GenomicRanges/issues/46
+    obj = as.data.frame(rowranges), 
+    file = out_fname, 
+    name = "rowRanges",
+    level = level,
+    # NOTE: Needed to ensure factor columns aren't converted to their underlying 
+    #       integer types.
+    DataFrameAsCompound = FALSE)
+  h5write(
+    obj = as.data.frame(seqinfo(rowranges)), 
+    file = out_fname, 
+    name = "rowRanges/seqinfo",
+    level = level,
+    # NOTE: Needed to ensure factor columns aren't converted to their underlying 
+    #       integer types.
+    DataFrameAsCompound = FALSE)
   
+  # colData
   cns <- setdiff(colnames(cov_dt), c("chr", "start", "strand"))
   cns <- sub("NA$", "NAcc", cns)
   cn_split <- strsplit(cns, "_")
@@ -108,94 +126,84 @@ FUN <- function(cov_fname, m_fname, prefix) {
   } else {
     "unsorted"
   }
-  cd <- DataFrame(donor = donor, tissue = tissue, neun = neun, row.names = cns)
-  
-  # TODO: Decide on whether M and Cov go in the same .h5 file.
-  m <- DelayedArray(m_dt[, !c("chr", "start", "strand")])
-  rownames(m) <- NULL
-  colnames(m) <- sub("NA$", "NAcc", colnames(m))
-  # TODO: Ensure m is an integer.
-  m <- writeHDF5Array(
-    x = m,
-    # filepath = file.path(path, paste0(prefix, HDF5Array:::.ASSAYS_H5_BASENAME)),
-    filepath = file.path(path, paste0(prefix, "M.h5")),
+  coldata <- data.frame(donor = donor, tissue = tissue, neun = neun)
+  h5write(
+    obj = coldata, 
+    file = out_fname, 
+    name = "colData",
+    level = level,
+    # NOTE: Needed to ensure factor columns aren't converted to their underlying 
+    #       integer types.
+    DataFrameAsCompound = FALSE)
+
+  # M and Cov
+  # TODO: Think about best chunkdim. Default is getHDF5DumpChunkDim(dim(x)),
+  #       which currently results in blocks along columns.
+  chunkdim <- makeCappedVolumeBox(
+    getHDF5DumpChunkLength(),
+    dim(M),
+    "hypercube")
+  M <- DelayedArray(m_dt[, !c("chr", "start", "strand")])
+  type(M) <- "integer"
+  rownames(M) <- NULL
+  colnames(M) <- sub("NA$", "NAcc", colnames(M))
+  stopifnot(identical(cns, colnames(M)))
+  M <- writeHDF5Array(
+    x = M,
+    filepath = out_fname,
     name = "M",
-    # TODO: Think about best chunkdim. Default is getHDF5DumpChunkDim(dim(x)),
-    #       which currently results in blocks along columns.
-    chunkdim = makeCappedVolumeBox(
-      getHDF5DumpChunkLength(),
-      dim(m),
-      "hypercube"),
-    level = 9,
+    chunkdim = chunkdim,
+    level = level,
     with.dimnames = TRUE)
-  
-  cov <- DelayedArray(cov_dt[, !c("chr", "start", "strand")])
-  rownames(cov) <- NULL
-  colnames(cov) <- sub("NA$", "NAcc", colnames(cov))
-  # TODO: Ensure cov is an integer.
-  cov <- writeHDF5Array(
-    x = cov,
-    # filepath = file.path(path, paste0(prefix, HDF5Array:::.ASSAYS_H5_BASENAME)),
-    filepath = file.path(path, paste0(prefix, "Cov.h5")),
+  Cov <- DelayedArray(cov_dt[, !c("chr", "start", "strand")])
+  type(Cov) <- "integer"
+  rownames(Cov) <- NULL
+  colnames(Cov) <- sub("NA$", "NAcc", colnames(Cov))
+  stopifnot(identical(cns, colnames(Cov)))
+  Cov <- writeHDF5Array(
+    x = Cov,
+    filepath = out_fname,
     name = "Cov",
-    # TODO: Think about best chunkdim. Default is getHDF5DumpChunkDim(dim(x)),
-    #       which currently results in blocks along columns.
-    chunkdim = makeCappedVolumeBox(
-      getHDF5DumpChunkLength(),
-      dim(cov),
-      "hypercube"),
-    level = 9,
+    chunkdim = chunkdim,
+    level = level,
     with.dimnames = TRUE)
-  list(M = m, Cov = cov, rowRanges = rr, colData = cd)
+
+  list(M = M, Cov = Cov, rowRanges = rowranges, colData = coldata)
 }
 ```
 
 We run this on all the datasets.
 
 ```{r}
-bulk_cpg <- FUN(cov_bulk_cpg_fname, m_bulk_cpg_fname, "bulk_CpG.")
-sorted_cpg <- FUN(cov_sorted_cpg_fname, m_sorted_cpg_fname, "sorted_CpG.")
+options(DelayedArray.block.size = 1e10) # 10GB block size.
+path <- file.path("MethylSeqData", "rizzardi_hickey_brain")
+dir.create(path, showWarnings = FALSE, recursive = TRUE)
+level <- 9
+
+bulk_cpg <- FUN(
+  cov_bulk_cpg_fname, 
+  m_bulk_cpg_fname, 
+  file.path(path, "bulk_CpG.h5"))
+sorted_cpg <- FUN(
+  cov_sorted_cpg_fname, 
+  m_sorted_cpg_fname, 
+  file.path(path, "sorted_CpG.h5"))
 sorted_cpa_fwd <- FUN(
   cov_sorted_cpa_fwd_fname, 
-  m_sorted_cpa_fwd_fname,
-  "sorted_CpA_fwd.")
+  m_sorted_cpa_fwd_fname, 
+  file.path(path, "sorted_CpA_fwd.h5"))
 sorted_cpa_rev <- FUN(
   cov_sorted_cpa_rev_fname, 
-  m_sorted_cpa_rev_fname,
-  "sorted_CpA_rev.")
+  m_sorted_cpa_rev_fname, 
+  file.path(path, "sorted_CpA_rev.h5"))
 sorted_cpt_fwd <- FUN(
   cov_sorted_cpt_fwd_fname, 
-  m_sorted_cpt_fwd_fname,
-  "sorted_CpT_fwd.")
+  m_sorted_cpt_fwd_fname, 
+  file.path(path, "sorted_CpT_fwd.h5"))
 sorted_cpt_rev <- FUN(
   cov_sorted_cpt_rev_fname, 
-  m_sorted_cpt_rev_fname,
-  "sorted_CpT_rev.")
-```
-
-# Save for upload
-
-We save all of the relevant components to file for upload to `r Biocpkg("ExperimentHub")`.
-Note that the count matrices have already been saved in [Processing the data].
-
-```{r}
-# TODO: Decide on CSV vs. Rds
-#       - "CSV files do not record an encoding" (`?write.csv`)
-#       - rds file can contain more complicated sample metadata.
-write.csv(bulk_cpg$colData, file.path(path, "bulk_CpG.colData.csv.gz"))
-saveRDS(bulk_cpg$colData, file.path(path, "bulk_CpG.colData.rds"))
-
-# TODO: Decide on BED vs. RDS
-#       - BED files don't contain genome / seqinfo
-#       - .rds file can contain GPos directly
-#       - ds file can 
-saveRDS(bulk_cpg$rowRanges, file.path(path, "bulk_CpG.rowRanges.rds"))
-library(rtracklayer)
-export(
-  con = file.path(path, "bulk_CpG.rowRanges.bed.gz"),
-  object = bulk_cpg$rowRanges)
-
-# TODO Process the remaining objects.
+  m_sorted_cpt_rev_fname, 
+  file.path(path, "sorted_CpT_rev.h5"))
 ```
 
 # Session info
