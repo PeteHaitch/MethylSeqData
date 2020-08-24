@@ -143,6 +143,7 @@ bfc <- BiocFileCache("raw_data", ask = FALSE)
 fname_df <- do.call(
   rbind,
   lapply(rownames(coldata), function(sample) {
+    # TODO: Remove message()?
     message(sample)
     cd <- coldata[sample, ]
     cov_fname <- bfcrpath(
