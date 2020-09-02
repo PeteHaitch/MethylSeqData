@@ -80,23 +80,60 @@ library(data.table)
 library(GenomicRanges)
 library(HDF5Array)
 
-FUN <- function(cov_fname, m_fname, out_fname) {
+FUN <- function(cov_fnames, m_fnames, out_fname) {
+  stopifnot(identical(length(cov_fnames), length(m_fnames)))
+  n <- length(cov_fnames)
+  
   # Load data
-  cov_dt <- fread(cov_fname)
-  m_dt <- fread(m_fname)
-  stopifnot(
-    identical(colnames(cov_dt), colnames(m_dt)),
-    identical(cov_dt$chr, m_dt$chr),
-    identical(cov_dt$start, m_dt$start),
-    identical(cov_dt$strand, m_dt$strand))
+  sample_data <- lapply(seq_along(cov_fnames), function(j) {
+    cov_dt <- fread(cov_fnames[[j]], data.table = FALSE)
+    m_dt <- fread(m_fnames[[j]], data.table = FALSE)
+    stopifnot(
+      identical(colnames(cov_dt), colnames(m_dt)),
+      identical(cov_dt$chr, m_dt$chr),
+      identical(cov_dt$start, m_dt$start),
+      identical(cov_dt$strand, m_dt$strand))
+    
+    # rowRanges
+    rowranges <- GPos(
+      seqnames = cov_dt$chr, 
+      pos = cov_dt$start, 
+      strand = cov_dt$strand, 
+      seqinfo = Seqinfo(genome = "hg19"))
+    
+    # colData
+    cns_ <- setdiff(colnames(cov_dt), c("chr", "start", "strand"))
+    cns <- sub("NA", "NAcc", cns_)
+    cn_split <- strsplit(cns, "_")
+    donor <- vapply(cn_split, "[[", 1, FUN.VALUE = character(1L))
+    tissue <- vapply(cn_split, "[[", 2, FUN.VALUE = character(1L))
+    neun <- if (all(lengths(cn_split) == 3)) {
+      vapply(cn_split, "[[", 3, FUN.VALUE = character(1L))
+    } else {
+      "unsorted"
+    }
+    coldata <- data.frame(donor = donor, tissue = tissue, neun = neun)
+    rownames(coldata) <- paste(
+      coldata$donor,
+      coldata$tissue,
+      coldata$neun,
+      sep = "_")
+    
+    # Assays
+    M <- DelayedArray(m_dt[, cns_])
+    colnames(M) <- rownames(coldata)
+    type(M) <- "integer"
+    rownames(M) <- NULL
+    Cov <- DelayedArray(cov_dt[, cns_])
+    colnames(Cov) <- rownames(coldata)
+    type(Cov) <- "integer"
+    rownames(Cov) <- NULL
+    
+    list(M = M, Cov = Cov, rowRanges = rowranges, colData = coldata)
+  })
   
   # rowRanges
-  rowranges <- GPos(
-    seqnames = cov_dt$chr, 
-    pos = cov_dt$start, 
-    strand = cov_dt$strand, 
-    seqinfo = Seqinfo(genome = "hg19"))
-  stopifnot(!is.unsorted(rowranges))
+  rowranges <- sort(unique(Reduce(c, lapply(sample_data, "[[", "rowRanges"))))
   h5write(
     # TODO: https://github.com/Bioconductor/GenomicRanges/issues/46
     obj = as.data.frame(rowranges), 
@@ -116,17 +153,7 @@ FUN <- function(cov_fname, m_fname, out_fname) {
     DataFrameAsCompound = FALSE)
   
   # colData
-  cns <- setdiff(colnames(cov_dt), c("chr", "start", "strand"))
-  cns <- sub("NA$", "NAcc", cns)
-  cn_split <- strsplit(cns, "_")
-  donor <- vapply(cn_split, "[[", 1, FUN.VALUE = character(1L))
-  tissue <- vapply(cn_split, "[[", 2, FUN.VALUE = character(1L))
-  neun <- if (all(lengths(cn_split)) == 3) {
-    vapply(cn_split, "[[", 2, FUN.VALUE = character(1L))
-  } else {
-    "unsorted"
-  }
-  coldata <- data.frame(donor = donor, tissue = tissue, neun = neun)
+  coldata <- do.call(rbind, lapply(sample_data, "[[", "colData"))
   h5write(
     obj = coldata, 
     file = out_fname, 
@@ -137,17 +164,28 @@ FUN <- function(cov_fname, m_fname, out_fname) {
     DataFrameAsCompound = FALSE)
 
   # M and Cov
+  if (n > 1) {
+    # NOTE: This creates a large matrix in-memory, so only do with care.
+    M <- matrix(
+      0L, 
+      nrow = length(rowranges), 
+      ncol = nrow(coldata),
+      dimnames = list(NULL, rownames(coldata)))
+    Cov <- M
+    for (j in seq_along(sample_data)) {
+      sd <- sample_data[[j]]
+      ol <- findOverlaps(sd$rowRanges, rowranges, type = "equal")
+      M[subjectHits(ol), colnames(sd$M)] <- as.matrix(sd$M[queryHits(ol), ])
+      Cov[subjectHits(ol), colnames(sd$Cov)] <- as.matrix(
+        sd$Cov[queryHits(ol), ])
+    }
+  }
   # TODO: Think about best chunkdim. Default is getHDF5DumpChunkDim(dim(x)),
   #       which currently results in blocks along columns.
   chunkdim <- makeCappedVolumeBox(
     getHDF5DumpChunkLength(),
     dim(M),
     "hypercube")
-  M <- DelayedArray(m_dt[, !c("chr", "start", "strand")])
-  type(M) <- "integer"
-  rownames(M) <- NULL
-  colnames(M) <- sub("NA$", "NAcc", colnames(M))
-  stopifnot(identical(cns, colnames(M)))
   M <- writeHDF5Array(
     x = M,
     filepath = out_fname,
@@ -155,11 +193,6 @@ FUN <- function(cov_fname, m_fname, out_fname) {
     chunkdim = chunkdim,
     level = level,
     with.dimnames = TRUE)
-  Cov <- DelayedArray(cov_dt[, !c("chr", "start", "strand")])
-  type(Cov) <- "integer"
-  rownames(Cov) <- NULL
-  colnames(Cov) <- sub("NA$", "NAcc", colnames(Cov))
-  stopifnot(identical(cns, colnames(Cov)))
   Cov <- writeHDF5Array(
     x = Cov,
     filepath = out_fname,
@@ -172,7 +205,7 @@ FUN <- function(cov_fname, m_fname, out_fname) {
 }
 ```
 
-We run this on all the datasets.
+We run this on all the datasets, also combining the 'bulk' and 'sorted' CpG data into a single dataset.
 
 ```{r}
 options(DelayedArray.block.size = 1e10) # 10GB block size.
@@ -180,30 +213,26 @@ path <- file.path("MethylSeqData", "rizzardi_hickey_brain")
 dir.create(path, showWarnings = FALSE, recursive = TRUE)
 level <- 9
 
-bulk_cpg <- FUN(
-  cov_bulk_cpg_fname, 
-  m_bulk_cpg_fname, 
-  file.path(path, "bulk_CpG.h5"))
-sorted_cpg <- FUN(
-  cov_sorted_cpg_fname, 
-  m_sorted_cpg_fname, 
-  file.path(path, "sorted_CpG.h5"))
+cpg <- FUN(
+  c(cov_bulk_cpg_fname, cov_sorted_cpg_fname),
+  c(m_bulk_cpg_fname, m_sorted_cpg_fname),
+  file.path(path, "rizzardi_hickey_brain.CpG.h5"))
 sorted_cpa_fwd <- FUN(
   cov_sorted_cpa_fwd_fname, 
   m_sorted_cpa_fwd_fname, 
-  file.path(path, "sorted_CpA_fwd.h5"))
+  file.path(path, "rizzardi_hickey_brain.CpA_fwd.h5"))
 sorted_cpa_rev <- FUN(
   cov_sorted_cpa_rev_fname, 
   m_sorted_cpa_rev_fname, 
-  file.path(path, "sorted_CpA_rev.h5"))
+  file.path(path, "rizzardi_hickey_brain.CpA_rev.h5"))
 sorted_cpt_fwd <- FUN(
   cov_sorted_cpt_fwd_fname, 
   m_sorted_cpt_fwd_fname, 
-  file.path(path, "sorted_CpT_fwd.h5"))
+  file.path(path, "rizzardi_hickey_brain.CpT_fwd.h5"))
 sorted_cpt_rev <- FUN(
   cov_sorted_cpt_rev_fname, 
   m_sorted_cpt_rev_fname, 
-  file.path(path, "sorted_CpT_rev.h5"))
+  file.path(path, "rizzardi_hickey_brain.CpT_rev.h5"))
 ```
 
 # Session info
