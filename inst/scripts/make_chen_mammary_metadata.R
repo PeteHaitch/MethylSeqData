@@ -1,33 +1,19 @@
-# TODO
 write.csv(
-  file = "../../extdata/metadata_chen_mammary.csv",
+  file = "inst/extdata/metadata_chen_mammary.csv",
   data.frame(
-    # Title = sprintf("Wu %s mouse kidney %s",
-    #                 rep(c("healthy", "diseased"), each=2),
-    #                 rep(c("counts", "colData"), 2)),
-    # Description = sprintf("%s for %s in the Wu mouse kidney single-nucleus RNA-seq dataset",
-    #                       rep(c("Count matrix", "Per-cell metadata"), 2),
-    #                       rep(c("healthy tissue", "fibrotic tissue"), each=2)),
-    RDataPath = file.path(
-      "MethylSeqData", "chen_mammary",
-      # paste0(c("counts-healthy", "coldata-healthy", "counts-disease", "coldata-disease"),
-      # ".rds"))
-    ),
+    Title = "Chen Mouse mammary dataset",
+    Description = "Count matrices, rowRanges, and colData in the Chen mouse mammary reduced representation bisulfite-sequencing dataset",
+    RDataPath = file.path("MethylSeqData", "chen_mammary", "chen_mammary.h5"),
     BiocVersion = "3.12",
     Genome = "mm10",
-    SourceType = "TSV",
-    # SourceUrl = "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE96612",
-    # SourceVersion = c(
-    #   "GSE119531_Healthy.combined.dge.txt.gz",
-    #   "GSE119531_Healthy.combined.cell.annotation.txt.gz",
-    #   "GSE119531_UUO.dge.txt.gz",
-    #   "GSE119531_UUO.cell.annotation.txt.gz"
-    # ),
+    SourceType = "HDF5",
+    SourceUrl = "https://doi.org/10.5281/zenodo.1052871",
+    SourceVersion = "v1",
     Species = "Mus musculus",
-    # TaxonomyId = "10090",
-    # Coordinate_1_based = NA,
-    # DataProvider = "GEO",
+    TaxonomyId = "10090",
+    Coordinate_1_based = TRUE,
+    DataProvider = "Zenodo",
     Maintainer = "Peter Hickey <peter.hickey@gmail.com>",
-    # RDataClass = c("dgCMatrix", "data.frame", "dgCMatrix", "data.frame"),
-    DispatchClass = "Rds"),
+    RDataClass = "SummarizedExperiment",
+    DispatchClass = "H5File"),
   row.names = FALSE)
