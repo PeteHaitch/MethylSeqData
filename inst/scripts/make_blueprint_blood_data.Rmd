@@ -224,37 +224,67 @@ We save all of the relevant components to file for upload to `r Biocpkg("Experim
 
 ```{r}
 library(HDF5Array)
-
 path <- file.path("MethylSeqData", "blueprint_blood")
 dir.create(path, showWarnings = FALSE, recursive = TRUE)
+fname <- file.path(path, "blueprint_blood.h5")
+level <- 9
 
+# M and Cov.
+# TODO: Think about best chunkdim. Default is getHDF5DumpChunkDim(dim(x)),
+#       which currently results in blocks along columns.
+chunkdim <- makeCappedVolumeBox(
+    getHDF5DumpChunkLength(),
+    dim(M),
+    "hypercube")
 M <- writeHDF5Array(
-    x = M,
-    filepath = file.path(path, "blueprint_blood.M.h5"),
-    name = "M",
-    # TODO: Think about best chunkdim. Default is getHDF5DumpChunkDim(dim(x)),
-    #       which currently results in blocks along columns.
-    chunkdim = makeCappedVolumeBox(
-      getHDF5DumpChunkLength(),
-      dim(M),
-      "hypercube"),
-    level = 9,
-    with.dimnames = TRUE)
+  x = M, 
+  filepath = fname,
+  name = "M",
+  chunkdim = chunkdim,
+  level = level,
+  with.dimnames = TRUE)
 Cov <- writeHDF5Array(
-    x = Cov,
-    filepath = file.path(path, "blueprint_blood.M.h5"),
-    name = "Cov",
-    # TODO: Think about best chunkdim. Default is getHDF5DumpChunkDim(dim(x)),
-    #       which currently results in blocks along columns.
-    chunkdim = makeCappedVolumeBox(
-      getHDF5DumpChunkLength(),
-      dim(Cov),
-      "hypercube"),
-    level = 9,
-    with.dimnames = TRUE)
+  x = Cov, 
+  filepath = fname,
+  name = "Cov",
+  chunkdim = chunkdim,
+  level = level,
+  with.dimnames = TRUE)
 
-# TODO: Awaiting decision on storing colData and rowData as R objects vs. 
-#       simple files.
+# rowRanges
+h5write(
+  # TODO: https://github.com/Bioconductor/GenomicRanges/issues/46
+  obj = as.data.frame(rowranges), 
+  file = fname, 
+  name = "rowRanges",
+  level = level,
+  # NOTE: Needed to ensure factor columns aren't converted to their underlying 
+  #       integer types.
+  DataFrameAsCompound = FALSE)
+# NOTE: as.data.frame,Seqinfo-method stores seqnames as rownames, which aren't 
+#       preserved by the call to h5write(), so have to explicitly add these back 
+#       as a column.
+seqinfo_df <- as.data.frame(seqinfo(rowranges)) 
+seqinfo_df[["seqnames"]] <- rownames(seqinfo_df)
+h5write(
+  obj = seqinfo_df, 
+  file = fname, 
+  name = "rowRanges/seqinfo",
+  level = level,
+  # NOTE: Needed to ensure factor columns aren't converted to their underlying 
+  #       integer types.
+  DataFrameAsCompound = FALSE)
+
+# TODO: 
+# colData
+h5write(
+  obj = as.data.frame(coldata),
+  file = fname, 
+  name = "colData",
+  level = level,
+  # NOTE: Needed to ensure factor columns aren't converted to their underlying 
+  #       integer types.
+  DataFrameAsCompound = FALSE)
 ```
 
 # Session information
