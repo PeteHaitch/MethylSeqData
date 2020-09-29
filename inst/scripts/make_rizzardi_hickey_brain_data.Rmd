@@ -1,12 +1,12 @@
 ---
 title: Processing the Rizzardi/Hickey brain dataset
 author: Peter Hickey
-date: 17 August 2020
+date: 28 September 2020
 output:
   BiocStyle::html_document:
     titlecaps: false
     toc_float: true
-bibliography: ../ref.bib
+bibliography: ref.bib
 editor_options: 
   chunk_output_type: console
 ---
@@ -133,7 +133,11 @@ FUN <- function(cov_fnames, m_fnames, out_fname) {
   })
   
   # rowRanges
-  rowranges <- sort(unique(Reduce(c, lapply(sample_data, "[[", "rowRanges"))))
+  if (n > 1) {
+    rowranges <- sort(unique(Reduce(c, lapply(sample_data, "[[", "rowRanges"))))
+  } else {
+    rowranges <- sample_data[["rowranges"]]
+  }
   h5write(
     # TODO: https://github.com/Bioconductor/GenomicRanges/issues/46
     obj = as.data.frame(rowranges), 
@@ -143,8 +147,13 @@ FUN <- function(cov_fnames, m_fnames, out_fname) {
     # NOTE: Needed to ensure factor columns aren't converted to their underlying 
     #       integer types.
     DataFrameAsCompound = FALSE)
+  # NOTE: as.data.frame,Seqinfo-method stores seqnames as rownames, which aren't 
+  #       preserved by the call to h5write(), so have to explicitly add these 
+  #       back as a column.
+  seqinfo_df <- as.data.frame(seqinfo(rowranges)) 
+  seqinfo_df[["seqnames"]] <- rownames(seqinfo_df)
   h5write(
-    obj = as.data.frame(seqinfo(rowranges)), 
+    obj = seqinfo_df, 
     file = out_fname, 
     name = "rowRanges/seqinfo",
     level = level,
