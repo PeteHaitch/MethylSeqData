@@ -19,7 +19,8 @@ Suggests:
     GenomicRanges,
     HDF5Array,
     knitr,
-    rmarkdown 
+    rmarkdown,
+    DeepBlueR
 VignetteBuilder: knitr
 Encoding: UTF-8
 biocViews: 
