@@ -10,7 +10,7 @@
   if (is.null(suffix)) {
     suffix <- ""
   } else {
-    suffix <- paste0("-", suffix)
+    suffix <- paste0(".", suffix)
   }
   h5_fname <- file.path(host, sprintf("%s%s.h5", dataset, suffix))
   # TODO: Is h5_file the path to the local copy of the file?
