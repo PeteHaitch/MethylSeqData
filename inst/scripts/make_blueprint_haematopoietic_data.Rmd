@@ -1,7 +1,7 @@
 ---
-title: Processing the BLUEPRINT blood dataset
+title: Processing the BLUEPRINT dataset
 author: Peter Hickey
-date: 17 August 2020
+date: 01 October 2020
 output:
   BiocStyle::html_document:
     titlecaps: false
@@ -24,36 +24,26 @@ knitr::opts_chunk$set(error = FALSE, message = FALSE, warning = FALSE)
 library(S4Vectors)
 library(DeepBlueR)
 
-# TODO: Ask Stephanie for details on how these were selected.
-blueprint_blood_biosource <- c(
-  "CD14-positive, CD16-negative classical monocyte", 
-  "CD8-positive, alpha-beta T cell",
-  "CD4-positive, alpha-beta T cell", 
-  "CD38-negative naive B cell", 
-  "cytotoxic CD56-dim natural killer cell", 
-  "mature neutrophil",
-  "mature eosinophil")
-
-blueprint_blood_DNA_meth <- deepblue_list_experiments(
+# Adapted from https://www.bioconductor.org/packages/release/bioc/vignettes/DeepBlueR/inst/doc/DeepBlueR.html#large-scale-analysis-of-dna-methylation-across-212-samples-from-the-blueprint-consortium
+blueprint_DNA_meth <- deepblue_list_experiments(
   genome = "GRCh38",
   epigenetic_mark = "DNA Methylation",
-  technique = "BisulfiteSeq",
-  biosource = blueprint_blood_biosource,
-  project = "BLUEPRINT Epigenome")
+  technique = "Bisulfite-Seq",
+  project = "BLUEPRINT EPIGENOME")
 
 # Only want the WIG files
-blueprint_blood_DNA_meth <- blueprint_blood_DNA_meth[
-  grep("\\.wig$", blueprint_blood_DNA_meth[["name"]]), ]
+blueprint_DNA_meth <- blueprint_DNA_meth[
+  grep("\\.wig$", blueprint_DNA_meth[["name"]]), ]
 
 # deepblue_info() returns a nested list for these queries.
-blueprint_blood_DNA_meth_info <- deepblue_info(blueprint_blood_DNA_meth[["id"]])
+blueprint_DNA_meth_info <- deepblue_info(id = blueprint_DNA_meth[["id"]])
 
 # Convert the nested list into a DataFrame.
 # This DataFrame contains some 'list-columns'.
 df <- do.call(
   rbind,
   lapply(
-    blueprint_blood_DNA_meth_info,
+    blueprint_DNA_meth_info,
     function(info) {
       # Don't care about 'columns' column.
       info <- info[setdiff(names(info), "columns")]
@@ -66,6 +56,61 @@ df <- do.call(
       }
       df
     }))
+
+# TODO: Separate Rmds for the other projects?
+# TODO: BLUEPRINT HSC Differention calls it WGBS
+# TODO: CEEHRC calls it WGBS
+# TODO: DEEP (IHEC) calls it WGBS (also has NOME-seq)
+# TODO: Roadmap Epigenomcs calls it WGBS (also has RRBS)
+
+
+# blueprint_DNA_meth <- blueprint_DNA_meth[
+#   grep("CPG_methylation_calls.bs_call",
+#     deepblue_extract_names(blueprint_DNA_meth)),]
+# 
+# # TODO: Ask Stephanie for details on how these were selected.
+# # "Oh, I was aiming to get all the purified whole blood cell types (e.g. CD4T, CD8T, NK, Bcell, Gran, Mono, etc) which matches this package: https://bioconductor.org/packages/release/data/experiment/html/FlowSorted.Blood.450k.html" (https://community-bioc.slack.com/archives/DE38USPDW/p1597668346001100)
+# blueprint_blood_biosource <- c(
+#   "CD14-positive, CD16-negative classical monocyte", 
+#   "CD8-positive, alpha-beta T cell",
+#   "CD4-positive, alpha-beta T cell", 
+#   "CD38-negative naive B cell", 
+#   "cytotoxic CD56-dim natural killer cell", 
+#   "mature neutrophil",
+#   "mature eosinophil")
+# 
+# blueprint_blood_DNA_meth <- deepblue_list_experiments(
+#   genome = "GRCh38",
+#   epigenetic_mark = "DNA Methylation",
+#   technique = "BisulfiteSeq",
+#   biosource = blueprint_blood_biosource,
+#   project = "BLUEPRINT Epigenome")
+# 
+# # Only want the WIG files
+# blueprint_blood_DNA_meth <- blueprint_blood_DNA_meth[
+#   grep("\\.wig$", blueprint_blood_DNA_meth[["name"]]), ]
+# 
+# # deepblue_info() returns a nested list for these queries.
+# blueprint_blood_DNA_meth_info <- deepblue_info(blueprint_blood_DNA_meth[["id"]])
+# 
+# # Convert the nested list into a DataFrame.
+# # This DataFrame contains some 'list-columns'.
+# df <- do.call(
+#   rbind,
+#   lapply(
+#     blueprint_blood_DNA_meth_info,
+#     function(info) {
+#       # Don't care about 'columns' column.
+#       info <- info[setdiff(names(info), "columns")]
+#       # Deal with 'flat' columns.
+#       df <- DataFrame(info[lengths(info) == 1], check.names = FALSE)
+#       # Deal with 'nested' columns.
+#       tmp <- lapply(info[lengths(info) > 1], DataFrame)
+#       for (n in names(tmp)) {
+#         df[[n]] <- tmp[[n]]
+#       }
+#       df
+#     }))
 ```
 
 We need to do some post-processing of the result.
@@ -101,10 +146,33 @@ We therefore collapse the sample-level metadata so that each row represents a sa
 
 ```{r}
 # Remove duplicate rows
+stopifnot(nrow(unique(coldata)) == (nrow(coldata) / 2))
 coldata <- unique(coldata)
-stopifnot(nrow(coldata) == 44)
 
-# Add bs_cov and bs_call filenames.
+# TODO: Need to match up each row of coldata to its pair of bigWig files in df. 
+# TODO: THE CODE BELOW IS OLD AND DOESN'T WORK
+
+files_df <- df[["extra_metadata"]][, "FILE", drop = FALSE]
+rownames(files_df) <- df$sample_id
+files_df[["type"]] <- ifelse(grepl("bs_cov", files_df[["FILE"]]), "cov", "call")
+files_df[rownames(coldata), ]
+
+# TODO: 
+
+grep(
+  coldata[["sample_id"]][1],
+  grep(
+    "bs_cov",
+    df[["extra_metadata"]][["FILE"]],
+    value = TRUE))
+
+# Add bs_cov and bs_call file names.
+match(coldata[["sample_id"]], grep(
+    "bs_cov",
+    df[["extra_metadata"]][["FILE"]],
+    value = TRUE))
+
+
 coldata[["bs_cov"]] <- file.path(
   "ftp://ftp.ebi.ac.uk/pub/databases",
   grep(
@@ -117,19 +185,24 @@ coldata[["bs_call"]] <- file.path(
     "bs_call",
     df[["extra_metadata"]][["FILE"]],
     value = TRUE))
-# Check files match up.
+
+cov_prefix <- vapply(
+  strsplit(basename(coldata[["bs_cov"]]), "\\."), 
+  "[[", 
+  character(1), 
+  1)
+call_prefix <- vapply(
+  strsplit(basename(coldata[["bs_call"]]), "\\."), 
+  "[[", 
+  character(1), 
+  1)
+stopifnot(identical(cov_prefix, call_prefix))
+
+cov_prefix_o <- order(cov_prefix)
+call_prefix_o <- order(call_prefix)
+
 stopifnot(
-  identical(
-    vapply(
-      strsplit(basename(coldata[["bs_cov"]]), "\\."), 
-      "[[", 
-      character(1), 
-      1),
-        vapply(
-      strsplit(basename(coldata[["bs_call"]]), "\\."), 
-      "[[", 
-      character(1), 
-      1)))
+  identical(cov_prefix[cov_prefix_o], call_prefix[call_prefix_o]))
 ```
 
 # Download and process the data
@@ -179,6 +252,7 @@ FUN <- function(sample) {
   call_bw <- my_import(fname_df[sample, "bs_call"])
   stopifnot(identical(granges(cov_bw), granges(call_bw)))
   
+  # TODO: GPos or GRanges?
   rr <- GPos(
     seqnames = seqnames(cov_bw),
     pos = start(cov_bw),
