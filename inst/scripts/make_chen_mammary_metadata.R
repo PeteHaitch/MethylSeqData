@@ -1,7 +1,7 @@
 write.csv(
   file = "inst/extdata/metadata_chen_mammary.csv",
   data.frame(
-    Title = "Chen Mouse mammary dataset",
+    Title = "Chen mouse mammary dataset",
     Description = "Count matrices, rowRanges, and colData in the Chen mouse mammary reduced representation bisulfite-sequencing dataset",
     RDataPath = file.path("MethylSeqData", "chen_mammary", "chen_mammary.h5"),
     BiocVersion = "3.12",
