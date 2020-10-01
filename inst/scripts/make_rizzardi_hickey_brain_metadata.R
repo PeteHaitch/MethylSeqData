@@ -1,34 +1,32 @@
-# TODO
 write.csv(
-  file = "../../extdata/metadata_rizzardi_hickey_brain.csv",
+  file = "inst/extdata/metadata_rizzardi_hickey_brain.csv",
   data.frame(
-    # Title = sprintf("Wu %s mouse kidney %s",
-    #                 rep(c("healthy", "diseased"), each=2),
-    #                 rep(c("counts", "colData"), 2)),
-    # Description = sprintf("%s for %s in the Wu mouse kidney single-nucleus RNA-seq dataset",
-    #                       rep(c("Count matrix", "Per-cell metadata"), 2),
-    #                       rep(c("healthy tissue", "fibrotic tissue"), each=2)),
+    Title = sprintf(
+      "Rizzardi/Hickey human brain dataset for %s loci %s.",
+      c("CpG", "CpA", "CpA", "CpT", "CpT"),
+      c("aggregated by strand", "on the forward strand", "on the reverse strand", "on the forward strand", "on the reverse strand")),
+    Description =
+      sprintf(
+        "Count matrices, rowRanges, and colData in the Rizzardi/Hickey human brain whole genome bisulfite-sequencing dataset for %s loci %s.",
+        c("CpG", "CpA", "CpA", "CpT", "CpT"),
+        c("aggregated by strand", "on the forward strand", "on the reverse strand", "on the forward strand", "on the reverse strand")),
     RDataPath = file.path(
-      "MethylSeqData", "rizzardi_hickey_brain",
-      # paste0(c("counts-healthy", "coldata-healthy", "counts-disease", "coldata-disease"),
-      # ".rds"))
-    ),
+      "MethylSeqData",
+      "rizzardi_hickey_brain",
+      paste0(
+        "rizzardi_hickey_brain.",
+        c("CpG", "CpA_fwd", "CpA_rev", "CpT_fwd", "CpT_rev"),
+        ".h5")),
     BiocVersion = "3.12",
     Genome = "hg19",
-    SourceType = "TSV",
-    SourceUrl = "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE96612",
-    # SourceVersion = c(
-    #   "GSE119531_Healthy.combined.dge.txt.gz",
-    #   "GSE119531_Healthy.combined.cell.annotation.txt.gz",
-    #   "GSE119531_UUO.dge.txt.gz",
-    #   "GSE119531_UUO.cell.annotation.txt.gz"
-    # ),
+    SourceType = "HDF5",
+    SourceUrl = "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE96nnn/GSE96612/suppl/",
+    SourceVersion = "v1",
     Species = "Homo sapiens",
-    # TaxonomyId = "10090",
-    # Coordinate_1_based = NA,
+    TaxonomyId = "9606",
+    Coordinate_1_based = TRUE,
     DataProvider = "GEO",
     Maintainer = "Peter Hickey <peter.hickey@gmail.com>",
-    # RDataClass = c("dgCMatrix", "data.frame", "dgCMatrix", "data.frame"),
-    # DispatchClass = "Rds"
-  ),
+    RDataClass = "SummarizedExperiment",
+    DispatchClass = "H5File"),
   row.names = FALSE)
