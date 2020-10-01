@@ -95,11 +95,20 @@ FUN <- function(cov_fnames, m_fnames, out_fname) {
       identical(cov_dt$strand, m_dt$strand))
     
     # rowRanges
-    rowranges <- GPos(
-      seqnames = cov_dt$chr, 
-      pos = cov_dt$start, 
-      strand = cov_dt$strand, 
-      seqinfo = Seqinfo(genome = "hg19"))
+    if (grepl("CpG", out_fname)) {
+      # CpG data are aggregated across strands and thus unstranded.
+      rowranges <- GRanges(
+        seqnames = cov_dt$chr, 
+        ranges = IRanges(start = cov_dt$start, width = 2L),
+        strand = cov_dt$strand, 
+        seqinfo = Seqinfo(genome = "hg19"))
+    } else {
+      rowranges <- GPos(
+        seqnames = cov_dt$chr, 
+        pos = cov_dt$start, 
+        strand = cov_dt$strand, 
+        seqinfo = Seqinfo(genome = "hg19"))
+    }
     
     # colData
     cns_ <- setdiff(colnames(cov_dt), c("chr", "start", "strand"))

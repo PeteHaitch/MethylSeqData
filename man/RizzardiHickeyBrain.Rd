@@ -18,7 +18,7 @@ RizzardiHickeyBrain(
 \item{HDF5Array}{Logical scalar indicating whether the assays should be returned as \linkS4class{HDF5Array} objects or as ordinary \link{matrix} objects.}
 }
 \value{
-A \linkS4class{SummarizeExperiment} object with assays containing a matrix of methylated read counts (\code{M}) and a matrix of unmethylated read counts (\code{U}).
+A \linkS4class{SummarizeExperiment} object with assays containing a matrix of methylated read counts (\code{M}) and a matrix of total read counts (\code{Cov}).
 }
 \description{
 Obtain the human brain nuclei whole genome bisulfite sequencing (WGBS) data from Rizzardi, Hickey, et al. (2019).
@@ -45,9 +45,9 @@ Column metadata include:
 }
 The majority of donors were matched between sorted and unsorted populations, but not all.
 
-Separate datasets are provided for each set of methylation loci:
+Separate datasets are provided for five sets of methylation loci:
 \itemize{
-  \item CpGs (\code{context = "CpG"}) aggregated by strand \code{strand = "*"})
+  \item CpGs (\code{context = "CpG"}) aggregated across strands (and thus unstranded,  \code{strand = "*"})
   \item CpAs (\code{context = "CpA"}) on the forward strand (\code{strand = "+"})
   \item CpAs (\code{context = "CpA"}) on the reverse strand (\code{strand = "-"})
   \item CpTs (\code{context = "CpT"}) on the forward strand (\code{strand = "+"})

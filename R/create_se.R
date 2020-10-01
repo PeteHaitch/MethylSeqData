@@ -4,7 +4,7 @@
 #' @importFrom rhdf5 h5read
 #' @importFrom GenomeInfoDb Seqinfo
 #' @importFrom S4Vectors endoapply
-#' @importFrom GenomicRanges GPos
+#' @importFrom GenomicRanges GPos GRanges
 .create_se <- function(dataset, assays, hub = ExperimentHub(), suffix = NULL, HDF5Array = TRUE) {
   host <- file.path("MethylSeqData", dataset)
   if (is.null(suffix)) {
@@ -32,11 +32,22 @@
     seqlengths = as.vector(rowranges[["seqinfo"]][["seqlengths"]]),
     isCircular = as.vector(rowranges[["seqinfo"]][["isCircular"]]),
     genome = as.vector(rowranges[["seqinfo"]][["genome"]]))
-  rowranges <- GPos(
-    seqnames = as.vector(rowranges[["seqnames"]]),
-    pos = as.vector(rowranges[["pos"]]),
-    strand = as.vector(rowranges[["strand"]]),
-    seqinfo = seqinfo)
+  # rowRanges may be stored as GRanges or a GPos.
+  if ("width" %in% names(rowranges)) {
+    rowranges <- GRanges(
+      seqnames = as.vector(rowranges[["seqnames"]]),
+      ranges = IRanges(
+        start = as.vector(rowranges[["start"]]),
+        width = as.vector(rowranges[["width"]])),
+      strand = as.vector(rowranges[["strand"]]),
+      seqinfo = seqinfo)
+  } else {
+    rowranges <- GPos(
+      seqnames = as.vector(rowranges[["seqnames"]]),
+      pos = as.vector(rowranges[["pos"]]),
+      strand = as.vector(rowranges[["strand"]]),
+      seqinfo = seqinfo)
+  }
 
   # colData
   coldata <- as.data.frame(h5read(h5_file, "colData"))
