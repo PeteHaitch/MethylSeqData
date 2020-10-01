@@ -133,10 +133,15 @@ FUN <- function(cov_fnames, m_fnames, out_fname) {
   })
   
   # rowRanges
+  # NOTE: rowRanges are only checked for sortedness if n > 1 because if n > 1 then 
+  #       the data are sorted but they are not if n == 1.
   if (n > 1) {
     rowranges <- sort(unique(Reduce(c, lapply(sample_data, "[[", "rowRanges"))))
   } else {
-    rowranges <- sample_data[["rowranges"]]
+    rowranges <- sample_data[[1]][["rowRanges"]]
+    if (is.unsorted(rowranges)) {
+      stop("rowranges are unsorted.")
+    }
   }
   h5write(
     # TODO: https://github.com/Bioconductor/GenomicRanges/issues/46
@@ -150,7 +155,7 @@ FUN <- function(cov_fnames, m_fnames, out_fname) {
   # NOTE: as.data.frame,Seqinfo-method stores seqnames as rownames, which aren't 
   #       preserved by the call to h5write(), so have to explicitly add these 
   #       back as a column.
-  seqinfo_df <- as.data.frame(seqinfo(rowranges)) 
+  seqinfo_df <- as.data.frame(seqinfo(rowranges))
   seqinfo_df[["seqnames"]] <- rownames(seqinfo_df)
   h5write(
     obj = seqinfo_df, 
@@ -188,6 +193,9 @@ FUN <- function(cov_fnames, m_fnames, out_fname) {
       Cov[subjectHits(ol), colnames(sd$Cov)] <- as.matrix(
         sd$Cov[queryHits(ol), ])
     }
+  } else {
+    M <- sample_data[[1L]][["M"]]
+    Cov <- sample_data[[1L]][["Cov"]]
   }
   # TODO: Think about best chunkdim. Default is getHDF5DumpChunkDim(dim(x)),
   #       which currently results in blocks along columns.
