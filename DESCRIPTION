@@ -6,8 +6,8 @@ Authors@R: c(
     person("Peter", "Hickey", email = "peter.hickey@gmail.com", 
     role = c("aut", "cre")))
 Description: Base-level (i.e. cytosine-level) counts for a collection of public 
-    bisulfite-seq datasets (e.g., WGBS and RRBS), provided as MethylExperiment 
-    objects with sample- and base-level metadata.
+    bisulfite-seq datasets (e.g., WGBS and RRBS), provided as 
+    SummarizedExperiment objects with sample- and base-level metadata.
 License: CC0
 NeedsCompilation: no
 Depends: 
