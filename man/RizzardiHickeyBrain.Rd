@@ -18,7 +18,7 @@ RizzardiHickeyBrain(
 \item{HDF5Array}{Logical scalar indicating whether the assays should be returned as \linkS4class{HDF5Array} objects or as ordinary \link{matrix} objects.}
 }
 \value{
-A \linkS4class{SummarizeExperiment} object with assays containing a matrix of methylated read counts (\code{M}) and a matrix of total read counts (\code{Cov}).
+A \linkS4class{SummarizedExperiment} object with assays containing a matrix of methylated read counts (\code{M}) and a matrix of total read counts (\code{Cov}).
 }
 \description{
 Obtain the human brain nuclei whole genome bisulfite sequencing (WGBS) data from Rizzardi, Hickey, et al. (2019).

@@ -47,7 +47,7 @@
 #' All data are downloaded from ExperimentHub and cached for local re-use.
 #' Specific resources can be retrieved by searching for \code{MethylSeqdata/rizzardi_hickey_brain}.
 #'
-#' @return A \linkS4class{SummarizeExperiment} object with assays containing a matrix of methylated read counts (\code{M}) and a matrix of total read counts (\code{Cov}).
+#' @return A \linkS4class{SummarizedExperiment} object with assays containing a matrix of methylated read counts (\code{M}) and a matrix of total read counts (\code{Cov}).
 #'
 #' @author Peter Hickey
 #'

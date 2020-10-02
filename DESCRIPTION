@@ -11,13 +11,21 @@ Description: Base-level (i.e. cytosine-level) counts for a collection of public
 License: CC0
 NeedsCompilation: no
 Depends: 
-Imports: 
+    SummarizedExperiment
+Imports:
+    ExperimentHub, 
+    HDF5Array,
+    rhdf5,
+    GenomeInfoDb,
+    S4Vectors,
+    GenomicRanges,
+    stats,
+    IRanges,
+    utils
 Suggests: 
     BiocFileCache, 
     BiocStyle, 
     data.table, 
-    GenomicRanges,
-    HDF5Array,
     knitr,
     rmarkdown,
     DeepBlueR
@@ -27,6 +35,8 @@ biocViews:
     ExperimentHub,
     ExperimentData, 
     SequencingData, 
+    Homo_sapiens_Data,
+    Mus_musculus_Data,
     MethylSeqData
 BuildResaveData: no
 RoxygenNote: 7.1.1

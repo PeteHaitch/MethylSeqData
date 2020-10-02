@@ -10,7 +10,7 @@ ChenMammaryData(HDF5Array = TRUE)
 \item{HDF5Array}{Logical scalar indicating whether the assays should be returned as \linkS4class{HDF5Array} objects or as ordinary \link{matrix} objects.}
 }
 \value{
-A \linkS4class{SummarizeExperiment} object with assays containing a matrix of methylated read counts (\code{M}) and a matrix of unmethylated read counts (\code{U}).
+A \linkS4class{SummarizedExperiment} object with assays containing a matrix of methylated read counts (\code{M}) and a matrix of unmethylated read counts (\code{U}).
 }
 \description{
 Obtain the mouse mammary reduced representation bisulfite sequencing (RRBS) data from Chen et al. (2017).

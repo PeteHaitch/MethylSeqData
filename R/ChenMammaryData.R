@@ -24,7 +24,7 @@
 #' All data are downloaded from ExperimentHub and cached for local re-use.
 #' Specific resources can be retrieved by searching for \code{MethylSeqdata/chen_mammary}.
 #'
-#' @return A \linkS4class{SummarizeExperiment} object with assays containing a matrix of methylated read counts (\code{M}) and a matrix of unmethylated read counts (\code{U}).
+#' @return A \linkS4class{SummarizedExperiment} object with assays containing a matrix of methylated read counts (\code{M}) and a matrix of unmethylated read counts (\code{U}).
 #'
 #' @author Peter Hickey
 #'

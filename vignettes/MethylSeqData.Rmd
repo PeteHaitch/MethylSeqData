@@ -1,0 +1,71 @@
+---
+title: "Overview of the MethylSeqData dataset collection"
+author: 
+- name: Peter Hickey
+  affiliation: Advanced Biology and Technology Division, Walter and Eliza Hall Institute of Medical Research
+  email: peter.hickey@gmail.com
+date: "Created: Oct 02, 2016; Compiled: `r Sys.Date()`"
+output:
+  BiocStyle::html_document:
+    toc: true
+package: MethylSeqData
+vignette: >
+  %\VignetteIndexEntry{User's Guide}
+  %\VignetteEngine{knitr::rmarkdown}
+bibliography: "`r system.file('scripts', 'ref.bib', package = 'MethylSeqData')`"
+---
+
+```{r style, echo=FALSE}
+knitr::opts_chunk$set(error = FALSE, warning = FALSE, message = FALSE)
+```
+
+# Introduction
+
+The `r Biocpkg("MethylSeqData")` package provides convenient access to several publicly available data sets in the form of *SummarizedExperiment* objects.
+The focus of this package is to capture datasets that are not easily read into R with a one-liner from, e.g., `read.csv()`.
+Instead, we do the necessary data munging so that users only need to call a single function to obtain a well-formed *SummarizedExperiment*`.
+For example:
+
+```{r}
+library(MethylSeqData)
+brain <- RizzardiHickeyBrain()
+brain
+```
+
+Readers are referred to the `r Biocpkg("SummarizedExperiment")` documentation 
+for further information on how to work with *SummarizedExperiment* objects.
+
+# Available data sets
+
+The `listDatasets()` function returns all available datasets in `r Biocpkg("MethylSeqData")`, along with some summary statistics and the necessary R command to load them.
+
+```{r}
+out <- listDatasets()
+```
+
+```{r, echo = FALSE}
+out <- as.data.frame(out)
+out$Taxonomy <- c(`10090` = "Mouse", `9606` = "Human")[as.character(out$Taxonomy)]
+out$Call <- sprintf("`%s`", out$Call)
+knitr::kable(out)
+```
+
+# Adding new data sets
+
+Please contact us if you have a data set that you would like to see added to this package.
+The only requirement is that your data set has publicly available count matrices and sample annotation.
+The more difficult/custom the format, the better, as its inclusion in this package will provide more value for other users in the R/Bioconductor community.
+
+If you have already written code that processes your desired data set in a *SummarizedExperiment*-like form, we would welcome a pull request [here](https://github.com/PeteHaitch/MethylSeqData).
+The process can be expedited by ensuring that you have the following files:
+
+- `inst/scripts/make-X-Y-data.Rmd`, a Rmarkdown report that creates all components of a `SingleCellExperiment`.
+`X` should be the last name of the first author of the relevant study while `Y` should be the name of the biological system.
+- `inst/scripts/make-X-Y-metadata.R`, an R script that creates a metadata CSV file at `inst/extdata/metadata-X-Y.csv`.
+Metadata files should follow the format described in the `r Biocpkg("ExperimentHub")` documentation.
+- `R/XYData.R`, an R source file that defines a function `XYData()` to download the components from ExperimentHub and creates a *SummarizedExperiment* object.
+
+Potential contributors are recommended to examine some of the existing scripts in the package to pick up the coding conventions.
+Remember, we're more likely to accept a contribution if it's indistinguishable from something we might have written ourselves!
+
+# References

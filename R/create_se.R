@@ -5,6 +5,8 @@
 #' @importFrom GenomeInfoDb Seqinfo
 #' @importFrom S4Vectors endoapply
 #' @importFrom GenomicRanges GPos GRanges
+#' @importFrom stats setNames
+#' @importFrom IRanges IRanges
 .create_se <- function(dataset, assays, hub = ExperimentHub(), suffix = NULL, HDF5Array = TRUE) {
   host <- file.path("MethylSeqData", dataset)
   if (is.null(suffix)) {
