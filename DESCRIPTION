@@ -1,7 +1,7 @@
 Package: MethylSeqData
 Title: Collection of Public DNA Methylation Sequencing Datasets
-Version: 0.99.0
-Date: 2020-10-02
+Version: 0.99.1
+Date: 2020-10-13
 Authors@R: c(
     person("Peter", "Hickey", email = "peter.hickey@gmail.com", 
     role = c("aut", "cre")))
@@ -27,8 +27,7 @@ Suggests:
     BiocStyle, 
     data.table, 
     knitr,
-    rmarkdown,
-    DeepBlueR
+    rmarkdown
 VignetteBuilder: knitr
 Encoding: UTF-8
 biocViews: 
