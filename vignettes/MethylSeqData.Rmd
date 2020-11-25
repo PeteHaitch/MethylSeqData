@@ -4,7 +4,7 @@ author:
 - name: Peter Hickey
   affiliation: Advanced Biology and Technology Division, Walter and Eliza Hall Institute of Medical Research
   email: peter.hickey@gmail.com
-date: "Created: Oct 02, 2016; Compiled: `r Sys.Date()`"
+date: "Created: Oct 02, 2020; Compiled: `r Sys.Date()`"
 output:
   BiocStyle::html_document:
     toc: true
