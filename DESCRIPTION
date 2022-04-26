@@ -1,6 +1,6 @@
 Package: MethylSeqData
 Title: Collection of Public DNA Methylation Sequencing Datasets
-Version: 1.6.0
+Version: 1.7.0
 Date: 2020-10-25
 Authors@R: c(
     person("Peter", "Hickey", email = "peter.hickey@gmail.com", 
